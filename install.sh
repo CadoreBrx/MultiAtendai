@@ -1,102 +1,64 @@
 #!/bin/bash
 
-# --- Auto-Instalador MultiAtendimento (Ubuntu 22.04) ---
-# Cores
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# --- Configurações Fixas ---
+IP_SERVER="206.183.129.197"
+FRONT_PATH="/root/MultiAtendai/frontend"
+BACK_PATH="/root/MultiAtendai/backend"
 
-echo -e "${BLUE}=====================================================${NC}"
-echo -e "${BLUE}   INSTALADOR AUTOMÁTICO - MULTIATENDIMENTO         ${NC}"
-echo -e "${BLUE}=====================================================${NC}"
-
-# Verificar se é root
-if [ "$EUID" -ne 0 ]; then 
-  echo -e "${RED}Por favor, execute como root (sudo bash install.sh)${NC}"
-  exit
-fi
-
-# Solicitar Informações
-read -p "Digite o domínio (ex: sistema.meusite.com): " DOMAIN
-read -p "Digite a porta do Backend (padrão 3000): " BACK_PORT
-BACK_PORT=${BACK_PORT:-3000}
-read -p "Digite o e-mail para o SSL (Certbot): " EMAIL
-
-echo -e "\n${GREEN}[1/5] Atualizando o sistema e instalando dependências...${NC}"
+echo -e "\n[1/4] Instalando dependências básicas..."
 apt update && apt upgrade -y
-apt install -y curl git wget build-essential libgbm-dev libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 nginx certbot python3-certbot-nginx
+apt install -y curl git nginx libgbm-dev libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2
 
-echo -e "\n${GREEN}[2/5] Instalando Node.js (v18.x)...${NC}"
-curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-apt install -y nodejs
+# Node.js e PM2
+if ! command -v node &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    apt install -y nodejs
+fi
 npm install -g pm2
 
-echo -e "\n${GREEN}[3/5] Configurando o Projeto...${NC}"
-# Assumindo que o usuário já clonou ou o script está na pasta raiz
-PROJECT_PATH=$(pwd)
-
-# Backend
-echo -e "${BLUE}Configurando Backend...${NC}"
-cd $PROJECT_PATH/backend
+echo -e "\n[2/4] Configurando o Backend no IP..."
+cd $BACK_PATH
 npm install
-npx prisma generate
+echo "PORT=3000" > .env
+echo "DATABASE_URL=\"file:./dev.db\"" >> .env
+echo "BACKEND_URL=http://$IP_SERVER:3000" >> .env
 npx prisma db push
 
-# Frontend
-echo -e "\n${BLUE}Configurando Frontend...${NC}"
-cd $PROJECT_PATH/frontend
-npm install
-# Criar arquivo .env para o frontend se necessário
-echo "VITE_API_URL=http://$DOMAIN:$BACK_PORT" > .env
+pm2 delete all 2>/dev/null
+pm2 start src/server.js --name "multi-backend"
+
+echo -e "\n[3/4] Configurando o Frontend no IP..."
+cd $FRONT_PATH
+npm install --legacy-peer-deps
+echo "VITE_API_URL=http://$IP_SERVER:3000" > .env
 npm run build
 
-echo -e "\n${GREEN}[4/5] Configurando Nginx e SSL...${NC}"
-# Configuração básica do Nginx
-cat <<EOF > /etc/nginx/sites-available/multiatt
+echo -e "\n[4/4] Configurando Nginx para servir o Frontend..."
+# Limpar configs antigas de SSL que podem travar o Nginx
+rm -f /etc/nginx/sites-enabled/*
+cat <<EOF > /etc/nginx/sites-available/multi_ip
 server {
-    server_name $DOMAIN;
+    listen 80;
+    server_name _;
 
     location / {
-        root $PROJECT_PATH/frontend/dist;
+        root $FRONT_PATH/dist;
         index index.html;
         try_files \$uri \$uri/ /index.html;
-    }
-
-    location /api {
-        proxy_pass http://localhost:$BACK_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
-
-    location /socket.io {
-        proxy_pass http://localhost:$BACK_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
     }
 }
 EOF
 
-ln -s /etc/nginx/sites-available/multiatt /etc/nginx/sites-enabled/
-rm /etc/nginx/sites-enabled/default
+ln -s /etc/nginx/sites-available/multi_ip /etc/nginx/sites-enabled/
+# Dar permissão para o Nginx ler a pasta root
+chmod -R 755 /root
 nginx -t && systemctl restart nginx
 
-# SSL com Certbot
-certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m $EMAIL
-
-echo -e "\n${GREEN}[5/5] Iniciando o serviço com PM2...${NC}"
-cd $PROJECT_PATH/backend
-pm2 start src/server.js --name "multi-backend"
 pm2 save
 pm2 startup
 
-echo -e "\n${GREEN}=====================================================${NC}"
-echo -e "${GREEN}   INSTALAÇÃO CONCLUÍDA COM SUCESSO!                ${NC}"
-echo -e "${GREEN}   Acesse: https://$DOMAIN                          ${NC}"
-echo -e "${GREEN}=====================================================${NC}"
+echo "====================================================="
+echo "  INSTALAÇÃO VIA IP CONCLUÍDA!"
+echo "  Acesse: http://$IP_SERVER"
+echo "  Backend rodando em: http://$IP_SERVER:3000"
+echo "====================================================="
