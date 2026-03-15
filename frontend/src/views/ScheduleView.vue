@@ -36,7 +36,7 @@ const newAgendamento = ref({
 const fetchAgendamentos = async () => {
     try {
         loading.value = true;
-        const response = await fetch('http://localhost:3000/api/agendamentos');
+        const response = await fetch('http://206.183.129.197:3000/api/agendamentos');
         agendamentos.value = await response.json();
     } catch (e) {
         console.error(e);
@@ -55,7 +55,7 @@ const createAgendamento = async () => {
 
     try {
         loading.value = true;
-        const res = await fetch('http://localhost:3000/api/agendamentos', {
+        const res = await fetch('http://206.183.129.197:3000/api/agendamentos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -79,7 +79,7 @@ const createAgendamento = async () => {
 
 const updateStatus = async (id, status) => {
     try {
-        await fetch(`http://localhost:3000/api/agendamentos/${id}`, {
+        await fetch(`http://206.183.129.197:3000/api/agendamentos/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status })
@@ -93,7 +93,7 @@ const updateStatus = async (id, status) => {
 const deleteAgendamento = async (id) => {
     if (!confirm('Excluir este agendamento?')) return;
     try {
-        await fetch(`http://localhost:3000/api/agendamentos/${id}`, { method: 'DELETE' });
+        await fetch(`http://206.183.129.197:3000/api/agendamentos/${id}`, { method: 'DELETE' });
         fetchAgendamentos();
     } catch (e) {
         console.error(e);

@@ -49,7 +49,7 @@ export default function Instances({ user, onLogout }) {
 
   const fetchInstances = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/instances');
+      const res = await fetch('http://206.183.129.197:3000/api/instances');
       const data = await res.json();
       if (data && data.length > 0) {
         setInstances(data.map(d => ({
@@ -69,7 +69,7 @@ export default function Instances({ user, onLogout }) {
       inst.id === id ? { ...inst, status: 'loading', number: 'Iniciando WhatsApp...' } : inst
     ));
     try {
-      await fetch('http://localhost:3000/api/instances', {
+      await fetch('http://206.183.129.197:3000/api/instances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })

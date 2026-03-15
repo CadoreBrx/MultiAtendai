@@ -40,7 +40,7 @@ export default function Dashboard({ user, onLogout }) {
     }
 
     try {
-      await fetch('http://localhost:3000/api/send-message', {
+      await fetch('http://206.183.129.197:3000/api/send-message', {
         method: 'POST',
         body: formData,
       });

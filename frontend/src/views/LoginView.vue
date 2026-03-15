@@ -20,7 +20,7 @@ const error = ref('');
 const handleLogin = async () => {
   if (email.value && password.value) {
     try {
-        const response = await fetch('http://localhost:3000/api/login', {
+        const response = await fetch('http://206.183.129.197:3000/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: email.value, password: password.value })

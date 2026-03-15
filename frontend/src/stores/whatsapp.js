@@ -16,7 +16,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const chats = ref(safeParse('chats', []));
     const activeChat = ref(safeParse('activeChat', null));
-    const socket = io('http://localhost:3000');
+    const socket = io('http://206.183.129.197:3000');
 
     watch(chats, (newChats) => {
         // Otimização: Não salvar o histórico completo de mensagens no LocalStorage
@@ -85,7 +85,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
             
             // Se não passou ID ou deu erro antes, tenta descobrir um conectado
             if (!targetId || targetId === 'suporte_principal') {
-                const instRes = await fetch('http://localhost:3000/api/instances');
+                const instRes = await fetch('http://206.183.129.197:3000/api/instances');
                 const instances = await instRes.json();
                 const connected = instances.find(i => i.status === 'connected');
                 if (connected) {
@@ -95,7 +95,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
                 }
             }
 
-            const response = await fetch(`http://localhost:3000/api/instances/${targetId}/chats`);
+            const response = await fetch(`http://206.183.129.197:3000/api/instances/${targetId}/chats`);
             if (!response.ok) throw new Error('Falha ao sincronizar');
             const data = await response.json();
             
@@ -115,7 +115,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const fetchMessages = async (clientId, chatId) => {
         try {
-            const response = await fetch(`http://localhost:3000/api/instances/${clientId}/chats/${chatId}/messages`);
+            const response = await fetch(`http://206.183.129.197:3000/api/instances/${clientId}/chats/${chatId}/messages`);
             if (!response.ok) throw new Error('Falha ao buscar mensagens');
             const data = await response.json();
             

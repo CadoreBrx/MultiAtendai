@@ -221,7 +221,7 @@ const handleSendMessage = async () => {
     }
 
     try {
-        await fetch('http://localhost:3000/api/send-message', {
+        await fetch('http://206.183.129.197:3000/api/send-message', {
             method: 'POST',
             body: formData,
         });
@@ -237,8 +237,8 @@ const openTransferDialog = async () => {
     showChatMenu.value = false;
     // Carrega usuários e departamentos para o select
     const [u, d] = await Promise.all([
-        fetch('http://localhost:3000/api/users').then(r => r.json()),
-        fetch('http://localhost:3000/api/departments').then(r => r.json())
+        fetch('http://206.183.129.197:3000/api/users').then(r => r.json()),
+        fetch('http://206.183.129.197:3000/api/departments').then(r => r.json())
     ]);
     users.value = u;
     departments.value = d;
@@ -252,7 +252,7 @@ const openTransferDialog = async () => {
 const transferChat = async () => {
     if (!wpStore.activeChat) return;
     try {
-        const res = await fetch(`http://localhost:3000/api/contacts/${encodeURIComponent(wpStore.activeChat.id)}/assign`, {
+        const res = await fetch(`http://206.183.129.197:3000/api/contacts/${encodeURIComponent(wpStore.activeChat.id)}/assign`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(transferForm.value)
@@ -310,7 +310,7 @@ const filteredChats = () => {
 
 const updateChatStatus = async (chatId, status) => {
     try {
-        const res = await fetch(`http://localhost:3000/api/contacts/${encodeURIComponent(chatId)}/chat-status`, {
+        const res = await fetch(`http://206.183.129.197:3000/api/contacts/${encodeURIComponent(chatId)}/chat-status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chatStatus: status })

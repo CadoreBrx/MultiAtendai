@@ -27,7 +27,7 @@ const loading = ref(false);
 const fetchTeam = async () => {
     try {
         loading.value = true;
-        const res = await fetch('http://localhost:3000/api/users');
+        const res = await fetch('http://206.183.129.197:3000/api/users');
         team.value = await res.json();
     } catch (e) {
         console.error(e);
@@ -57,8 +57,8 @@ const saveAgent = async () => {
         loading.value = true;
         const method = isEditing.value ? 'PATCH' : 'POST';
         const url = isEditing.value 
-            ? `http://localhost:3000/api/users/${editingId.value}` 
-            : 'http://localhost:3000/api/users';
+            ? `http://206.183.129.197:3000/api/users/${editingId.value}` 
+            : 'http://206.183.129.197:3000/api/users';
 
         // Prepare data (exclude empty password on edit)
         const payload = { ...userForm.value };
@@ -84,7 +84,7 @@ const deleteAgent = async (id) => {
     if (!confirm('Deseja realmente remover este agente?')) return;
     try {
         loading.value = true;
-        await fetch(`http://localhost:3000/api/users/${id}`, { method: 'DELETE' });
+        await fetch(`http://206.183.129.197:3000/api/users/${id}`, { method: 'DELETE' });
         fetchTeam();
     } catch (e) {
         console.error(e);

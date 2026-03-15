@@ -1,1 +1,1 @@
-﻿import { io } from 'socket.io-client'; export const socket = io('http://localhost:3000');
+import { io } from 'socket.io-client'; export const socket = io('http://206.183.129.197:3000');
