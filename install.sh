@@ -273,8 +273,12 @@ if command -v apt-get &>/dev/null; then
     command -v openssl &>/dev/null || PKGS="$PKGS openssl"
     [ "$MODE" == "2" ] && { command -v nginx &>/dev/null || PKGS="$PKGS nginx"; }
     [ -n "$PKGS" ] && apt-get install -y -qq $PKGS
-    # Dependências do whatsapp-web.js / Puppeteer
-    apt-get install -y -qq libgbm-dev libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 2>/dev/null || true
+    # Dependências do whatsapp-web.js / Puppeteer (Chromium)
+    apt-get install -y -qq \
+        libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 \
+        libnss3 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+        libxss1 libxtst6 libpango-1.0-0 libcairo2 libasound2 \
+        libgtk-3-0 fonts-liberation xdg-utils 2>/dev/null || true
 fi
 
 # Node.js — instala 20.x se não existir ou se for < 20
