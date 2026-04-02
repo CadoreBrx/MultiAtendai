@@ -115,11 +115,73 @@ pick_port() {
 }
 
 # ── Modo ─────────────────────────────────────
-echo "Onde deseja instalar?"
-echo "  [1] Local/VPS sem Nginx  (sem Nginx — frontend via Vite/preview no PM2)"
-echo "  [2] VPS com Nginx        (produção, com Nginx — seguro para VPS compartilhada)"
-read -rp "Escolha [1/2, padrão: 1]: " MODE
+echo "O que deseja fazer?"
+echo "  [1] Instalar  — Local/VPS sem Nginx  (frontend via Vite/preview no PM2)"
+echo "  [2] Instalar  — VPS com Nginx        (produção, Nginx — seguro para VPS compartilhada)"
+echo "  [3] Atualizar — Puxa mudanças do repositório e reinicia os serviços"
+read -rp "Escolha [1/2/3, padrão: 1]: " MODE
 MODE=${MODE:-1}
+
+# ── Modo 3: Atualização ──────────────────────
+if [ "$MODE" == "3" ]; then
+    step "🔄" "Atualizando MultiAtendai..."
+
+    # Verifica se é um repositório git
+    if ! git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+        err "Este diretório não é um repositório git. Clone o projeto antes de atualizar."
+    fi
+
+    # Stash de alterações locais no .env para não perder configurações
+    STASHED=false
+    if ! git -C "$SCRIPT_DIR" diff --quiet; then
+        warn "Há alterações locais — guardando temporariamente com git stash..."
+        git -C "$SCRIPT_DIR" stash push -m "auto-stash antes da atualização" -- \
+            ':!backend/.env' ':!frontend/.env' 2>/dev/null || true
+        STASHED=true
+    fi
+
+    log "Puxando mudanças do repositório..."
+    git -C "$SCRIPT_DIR" pull --rebase origin "$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD)" \
+        || err "Falha ao puxar as mudanças. Verifique conflitos manualmente."
+
+    if [ "$STASHED" = true ]; then
+        git -C "$SCRIPT_DIR" stash pop 2>/dev/null || warn "Não foi possível restaurar stash — verifique manualmente."
+    fi
+
+    step "📦" "Atualizando dependências..."
+    cd "$BACK_PATH"  && npm install --silent
+    cd "$FRONT_PATH" && npm install --legacy-peer-deps --silent
+    log "Dependências atualizadas."
+
+    step "🗄️" "Aplicando migrações do banco..."
+    cd "$BACK_PATH" && npx prisma db push
+    log "Banco sincronizado."
+
+    step "🏗️" "Gerando novo build do frontend..."
+    cd "$FRONT_PATH" && npm run build
+    log "Build gerado."
+
+    step "♻️" "Reiniciando serviços no PM2..."
+    pm2 describe "$APP_BACK"  &>/dev/null && pm2 restart "$APP_BACK"  || warn "Processo $APP_BACK não encontrado no PM2."
+    pm2 describe "$APP_FRONT" &>/dev/null && pm2 restart "$APP_FRONT" || true
+    pm2 save
+
+    # Recarrega Nginx se estiver em uso pelo projeto
+    if [ -f "/etc/nginx/sites-enabled/multiatendai" ]; then
+        nginx -t 2>/dev/null && systemctl reload nginx && log "Nginx recarregado." || warn "Erro na config do Nginx — reload ignorado."
+    fi
+
+    COMMIT=$(git -C "$SCRIPT_DIR" log -1 --format="%h — %s" 2>/dev/null)
+    echo ""
+    echo -e "${G}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${G}║            ATUALIZAÇÃO CONCLUÍDA!                       ║${NC}"
+    echo -e "${G}╠══════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${G}║  Commit:  ${NC}$COMMIT"
+    echo -e "${G}║  Backend: ${NC}pm2 logs $APP_BACK"
+    echo -e "${G}║  Front:   ${NC}pm2 logs $APP_FRONT"
+    echo -e "${G}╚══════════════════════════════════════════════════════════╝${NC}"
+    exit 0
+fi
 
 # ── Função compartilhada: detecta/pergunta o host ────
 pick_host() {
