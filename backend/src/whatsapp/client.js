@@ -1,6 +1,18 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { PrismaClient } = require('@prisma/client');
+const fs = require('fs');
 const prisma = new PrismaClient();
+
+// Detecta o Chrome instalado no sistema (evita depender do Puppeteer bundled)
+function findChrome() {
+    const candidates = [
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+    ];
+    return candidates.find(p => fs.existsSync(p)) || null;
+}
 
 const clients = new Map();
 // Mapa clientId -> empresaId para saber de qual tenant é cada instância
@@ -16,18 +28,28 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
         clientTenantMap.set(clientId, empresaId);
     }
 
+    const chromePath = findChrome();
+    if (chromePath) {
+        console.log(`[${clientId}] Usando Chrome do sistema: ${chromePath}`);
+    } else {
+        console.warn(`[${clientId}] Chrome do sistema não encontrado — usando Puppeteer bundled.`);
+    }
+
+    const puppeteerConfig = {
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-extensions',
+            '--disable-gpu',
+            '--single-process'
+        ]
+    };
+    if (chromePath) puppeteerConfig.executablePath = chromePath;
+
     const client = new Client({
         authStrategy: new LocalAuth({ clientId: clientId }),
-        puppeteer: {
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-extensions',
-                '--disable-gpu',
-                '--single-process'
-            ]
-        },
+        puppeteer: puppeteerConfig,
         qrMaxRetries: 5
     });
 
