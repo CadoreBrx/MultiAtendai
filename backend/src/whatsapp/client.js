@@ -20,13 +20,15 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
         authStrategy: new LocalAuth({ clientId: clientId }),
         puppeteer: {
             args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox', 
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--disable-gpu',
+                '--single-process'
             ]
         },
-        qrMaxRetries: 3
+        qrMaxRetries: 5
     });
 
     client.on('qr', (qr) => {
@@ -60,7 +62,16 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
 
     client.on('auth_failure', msg => {
         console.error(`[${clientId}] FALHA NA AUTENTICAÇÃO`, msg);
+        lastQrMap.delete(clientId);
         io.emit('whatsapp_auth_failure', { clientId, error: msg });
+    });
+
+    client.on('disconnected', (reason) => {
+        console.warn(`[${clientId}] DESCONECTADO — motivo: ${reason}`);
+        lastQrMap.delete(clientId);
+        clients.delete(clientId);
+        clientTenantMap.delete(clientId);
+        io.emit('whatsapp_disconnected', { clientId, reason });
     });
 
     const handleMessage = async (msg) => {
@@ -207,7 +218,13 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
 
     client.on('message_create', handleMessage);
 
-    client.initialize();
+    client.initialize().catch(err => {
+        console.error(`[${clientId}] ERRO AO INICIALIZAR (Puppeteer):`, err.message || err);
+        clients.delete(clientId);
+        clientTenantMap.delete(clientId);
+        lastQrMap.delete(clientId);
+        io.emit('whatsapp_error', { clientId, error: err.message || 'Falha ao inicializar o cliente WhatsApp.' });
+    });
     clients.set(clientId, client);
     return client;
 }

@@ -22,6 +22,8 @@ const instances = ref([]);
 
 const qrData = ref(null);
 const loading = ref(false);
+const socketConnected = ref(false);
+const instanceErrors = ref({});
 
 // Dialog Controls
 const showAddDialog = ref(false);
@@ -108,47 +110,72 @@ const saveRename = async () => {
 };
 
 onMounted(() => {
+    socketConnected.value = wpStore.socket.connected;
+    wpStore.socket.on('connect',    () => { socketConnected.value = true; });
+    wpStore.socket.on('disconnect', () => { socketConnected.value = false; });
+
     wpStore.socket.on('whatsapp_qr', (data) => {
         const inst = instances.value.find(i => i.id === data.clientId);
         if (inst) {
             inst.qr = data.qr;
+            delete instanceErrors.value[data.clientId];
         }
     });
 
     wpStore.socket.on('whatsapp_ready', (data) => {
         const inst = instances.value.find(i => i.id === data.clientId);
-        if (inst) {
-            inst.status = 'connected';
-            inst.qr = null;
-        }
+        if (inst) { inst.status = 'connected'; inst.qr = null; }
+        delete instanceErrors.value[data.clientId];
+        loading.value = false;
     });
 
     wpStore.socket.on('whatsapp_authenticated', (data) => {
         const inst = instances.value.find(i => i.id === data.clientId);
-        if (inst) {
-            inst.status = 'connected';
-            inst.qr = null;
-        }
+        if (inst) { inst.status = 'connected'; inst.qr = null; }
     });
 
     wpStore.socket.on('whatsapp_auth_failure', (data) => {
         const inst = instances.value.find(i => i.id === data.clientId);
-        if (inst) {
-            inst.status = 'disconnected';
-            inst.qr = null;
-        }
+        if (inst) { inst.status = 'disconnected'; inst.qr = null; }
+        instanceErrors.value[data.clientId] = 'Falha na autenticação. Tente novamente.';
+        loading.value = false;
     });
-    
+
+    wpStore.socket.on('whatsapp_disconnected', (data) => {
+        const inst = instances.value.find(i => i.id === data.clientId);
+        if (inst) { inst.status = 'disconnected'; inst.qr = null; }
+    });
+
+    wpStore.socket.on('whatsapp_error', (data) => {
+        const inst = instances.value.find(i => i.id === data.clientId);
+        if (inst) { inst.status = 'disconnected'; inst.qr = null; }
+        instanceErrors.value[data.clientId] = data.error || 'Erro ao inicializar. Verifique os logs do servidor.';
+        loading.value = false;
+    });
+
     fetchInstances();
 });
 
 const connect = async (id) => {
+    if (!socketConnected.value) {
+        instanceErrors.value[id] = 'Sem conexão com o servidor. Verifique se o backend está online e a porta está aberta no firewall.';
+        return;
+    }
     loading.value = true;
+    delete instanceErrors.value[id];
     const inst = instances.value.find(i => i.id === id);
-    if (inst) inst.qr = null; // Limpa QR anterior
-    
+    if (inst) inst.qr = null;
+
     wpStore.socket.emit('whatsapp_initialize', { clientId: id });
-    setTimeout(() => loading.value = false, 3000);
+
+    // Timeout: se em 30s não chegou QR nem ready, mostra erro
+    setTimeout(() => {
+        const current = instances.value.find(i => i.id === id);
+        if (current && !current.qr && current.status !== 'connected') {
+            instanceErrors.value[id] = 'Tempo esgotado sem resposta. Verifique os logs do servidor (pm2 logs multi-backend).';
+        }
+        loading.value = false;
+    }, 30000);
 };
 </script>
 
@@ -167,9 +194,16 @@ const connect = async (id) => {
             </div>
             <p class="text-gray-500 text-sm font-medium">Gerencie suas conexões oficiais e integração API.</p>
           </div>
-          <button @click="fetchInstances" class="w-full sm:w-auto px-8 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-white font-bold text-sm transition-all flex items-center justify-center gap-3">
-             <PhArrowsClockwise :size="20" :class="{'animate-spin': loading}" /> Atualizar Status
-          </button>
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold"
+              :class="socketConnected ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse'">
+              <div class="w-2 h-2 rounded-full" :class="socketConnected ? 'bg-green-500' : 'bg-red-500'"></div>
+              {{ socketConnected ? 'Servidor conectado' : 'Sem conexão com servidor' }}
+            </div>
+            <button @click="fetchInstances" class="w-full sm:w-auto px-8 h-14 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-white font-bold text-sm transition-all flex items-center justify-center gap-3">
+               <PhArrowsClockwise :size="20" :class="{'animate-spin': loading}" /> Atualizar Status
+            </button>
+          </div>
         </header>
 
         <div class="flex-1 p-6 sm:p-10 overflow-y-auto custom-scroll relative">
@@ -214,15 +248,18 @@ const connect = async (id) => {
                             <p class="text-xs font-bold text-gray-400 mt-4 animate-pulse uppercase tracking-widest">Escaneie para conectar</p>
                         </template>
                         <template v-else>
-                            <div class="text-center space-y-6">
+                            <div class="text-center space-y-6 w-full">
                                 <PhWarningCircle :size="64" class="text-gray-700 mx-auto" weight="thin" />
-                                <button 
-                                  @click="connect(inst.id)" 
-                                  class="px-10 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-3"
-                                  :disabled="loading"
+                                <button
+                                  @click="connect(inst.id)"
+                                  class="px-10 h-14 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-3 mx-auto"
+                                  :disabled="loading || !socketConnected"
                                 >
                                     <PhQrCode :size="20" /> Gerar QR Code
                                 </button>
+                                <div v-if="instanceErrors[inst.id]" class="mt-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 font-medium text-left leading-relaxed">
+                                    {{ instanceErrors[inst.id] }}
+                                </div>
                             </div>
                         </template>
                     </div>
