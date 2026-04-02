@@ -602,21 +602,18 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
         if (!client) return res.status(404).json({ error: 'Nenhum cliente WhatsApp conectado encontrado.' });
         
         const rawNumber = number ? number.replace(/\D/g, '') : '';
-        // Prioriza o chatId completo enviado pelo frontend (pode ser @lid, @g.us, @c.us)
-        let chatId = rawChatId || (number && number.includes('@') ? number : `${rawNumber}@c.us`);
+        let chatId = rawChatId && rawChatId.includes('@') ? rawChatId : null;
         const options = quotedMessageId ? { quotedMessageId } : {};
 
-        // Se não veio chatId completo do frontend, tenta resolver via lista de chats
-        if (!rawChatId && rawNumber) {
-            try {
-                const allChats = await client.getChats();
-                const found = allChats.find(c =>
-                    c.id.user === rawNumber ||
-                    c.id._serialized === `${rawNumber}@c.us`
-                );
-                if (found) chatId = found.id._serialized;
-            } catch (_) { /* mantém o chatId original */ }
+        if (!chatId && rawNumber) {
+            const numberId = await client.getNumberId(rawNumber);
+            if (!numberId) {
+                return res.status(400).json({ success: false, error: 'Número não possui WhatsApp' });
+            }
+            chatId = numberId._serialized;
         }
+
+        if (!chatId) return res.status(400).json({ success: false, error: 'chatId inválido' });
 
         let prefix = '';
         if (agentName) {
