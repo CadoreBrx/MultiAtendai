@@ -17,6 +17,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const chats = ref(safeParse('chats', []));
     const activeChat = ref(safeParse('activeChat', null));
+    const loadingMessages = ref(false);
     const socket = io(socketUrl());
 
     watch(chats, (newChats) => {
@@ -111,6 +112,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
     };
 
     const fetchMessages = async (clientId, chatId) => {
+        loadingMessages.value = true;
         try {
             let targetId = clientId;
             if (!targetId || targetId === 'suporte_principal') {
@@ -138,8 +140,10 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
             }
         } catch (e) {
             console.error("Erro no fetchMessages store:", e);
+        } finally {
+            loadingMessages.value = false;
         }
     };
 
-    return { chats, activeChat, setActiveChat, syncChats, fetchMessages, socket };
+    return { chats, activeChat, loadingMessages, setActiveChat, syncChats, fetchMessages, socket };
 });

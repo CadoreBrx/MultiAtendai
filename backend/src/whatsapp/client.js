@@ -191,7 +191,7 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
             }
         }
         
-        console.log(`[${clientId}] MENSAGEM de ${chatName}:`, msg.body);
+        console.log(`[${clientId}] MENSAGEM de ${chatName} (${msg.from}):`, msg.body);
         
         // 4. Persistência no Banco — scoped por empresa
         try {

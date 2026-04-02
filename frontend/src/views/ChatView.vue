@@ -569,7 +569,14 @@ onUnmounted(() => {
 
             <!-- Scrollable Messages Window -->
             <div class="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col gap-8 custom-scroll bg-[rgba(255,255,255,0.01)]">
-                <div 
+
+                <!-- Loading History Indicator -->
+                <div v-if="wpStore.loadingMessages" class="flex flex-col items-center justify-center gap-3 py-10 opacity-60">
+                    <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Carregando histórico...</span>
+                </div>
+
+                <div
                     v-for="(msg, index) in filteredMessages" 
                     :key="index"
                     class="flex w-full group/msg"

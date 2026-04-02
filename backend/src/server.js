@@ -621,6 +621,10 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
         }
         const finalMessage = prefix + (message || '');
 
+        // Usa getChatById + chat.sendMessage para evitar o erro "No LID for user"
+        // que ocorre quando client.sendMessage tenta resolver o LID de contas MD
+        const chatObj = await client.getChatById(chatId).catch(() => null);
+
         let sentMsg;
         if (file) {
             const media = new MessageMedia(
@@ -635,9 +639,13 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
                 mediaOptions.sendAudioAsVoice = true;
             }
 
-            sentMsg = await client.sendMessage(chatId, media, mediaOptions);
+            sentMsg = chatObj
+                ? await chatObj.sendMessage(media, mediaOptions)
+                : await client.sendMessage(chatId, media, mediaOptions);
         } else {
-            sentMsg = await client.sendMessage(chatId, finalMessage, options);
+            sentMsg = chatObj
+                ? await chatObj.sendMessage(finalMessage, options)
+                : await client.sendMessage(chatId, finalMessage, options);
         }
 
         // Persiste a mensagem no banco do tenant
