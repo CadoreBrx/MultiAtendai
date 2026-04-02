@@ -621,9 +621,13 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
         }
         const finalMessage = prefix + (message || '');
 
-        // Usa getChatById + chat.sendMessage para evitar o erro "No LID for user"
-        // que ocorre quando client.sendMessage tenta resolver o LID de contas MD
-        const chatObj = await client.getChatById(chatId).catch(() => null);
+        // Força a resolução do LID para contatos Multi-Device (MD) antes de enviar.
+        // Sem isso, sendMessage falha com "No LID for user" em contas MD.
+        if (!chatId.includes('@g.us')) {
+            await client.pupPage.evaluate(async (cId) => {
+                try { await window.WWebJS.enforceLidAndPnRetrieval(cId); } catch (_) {}
+            }, chatId).catch(() => {});
+        }
 
         let sentMsg;
         if (file) {
@@ -639,13 +643,9 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
                 mediaOptions.sendAudioAsVoice = true;
             }
 
-            sentMsg = chatObj
-                ? await chatObj.sendMessage(media, mediaOptions)
-                : await client.sendMessage(chatId, media, mediaOptions);
+            sentMsg = await client.sendMessage(chatId, media, mediaOptions);
         } else {
-            sentMsg = chatObj
-                ? await chatObj.sendMessage(finalMessage, options)
-                : await client.sendMessage(chatId, finalMessage, options);
+            sentMsg = await client.sendMessage(chatId, finalMessage, options);
         }
 
         // Persiste a mensagem no banco do tenant
