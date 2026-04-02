@@ -601,8 +601,14 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
 
         if (!client) return res.status(404).json({ error: 'Nenhum cliente WhatsApp conectado encontrado.' });
         
-        const chatId = number.includes('@') ? number : `${number}@c.us`;
+        let chatId = number.includes('@') ? number : `${number}@c.us`;
         const options = quotedMessageId ? { quotedMessageId } : {};
+
+        // Resolve LID: sessões novas do WhatsApp exigem o ID via getContactById
+        try {
+            const contact = await client.getContactById(chatId);
+            if (contact?.id?._serialized) chatId = contact.id._serialized;
+        } catch (_) { /* fallback para o chatId original */ }
 
         let prefix = '';
         if (agentName) {
@@ -617,7 +623,7 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
                 file.buffer.toString('base64'),
                 file.originalname || file.name || 'file'
             );
-            
+
             const isAudio = file.mimetype.includes('audio');
             const mediaOptions = { ...options, caption: finalMessage };
             if (isAudio) {
