@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { io } from 'socket.io-client';
+import { apiFetch, socketUrl } from '@/services/api';
 
 export const useWhatsappStore = defineStore('whatsapp', () => {
     const safeParse = (key, fallback) => {
@@ -16,11 +17,9 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const chats = ref(safeParse('chats', []));
     const activeChat = ref(safeParse('activeChat', null));
-    const socket = io('http://206.183.129.197:3000');
+    const socket = io(socketUrl());
 
     watch(chats, (newChats) => {
-        // Otimização: Não salvar o histórico completo de mensagens no LocalStorage
-        // para evitar QuotaExceededError. Salvamos apenas os metadados do chat.
         const previewChats = newChats.map(c => {
             const { messages, ...metadata } = c;
             return metadata;
@@ -69,7 +68,6 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
         }
         chats.value = newChats;
 
-        // Atualiza chat ativo se for a mesma conversa
         if (activeChat.value && activeChat.value.id === chatId) {
             activeChat.value = newChats[0];
         }
@@ -83,23 +81,21 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
         try {
             let targetId = clientId;
             
-            // Se não passou ID ou deu erro antes, tenta descobrir um conectado
             if (!targetId || targetId === 'suporte_principal') {
-                const instRes = await fetch('http://206.183.129.197:3000/api/instances');
+                const instRes = await apiFetch('/api/instances');
                 const instances = await instRes.json();
                 const connected = instances.find(i => i.status === 'connected');
                 if (connected) {
                     targetId = connected.id;
                 } else if (!targetId) {
-                    return; // Nenhuma instancia conectada para sincronizar
+                    return;
                 }
             }
 
-            const response = await fetch(`http://206.183.129.197:3000/api/instances/${targetId}/chats`);
+            const response = await apiFetch(`/api/instances/${targetId}/chats`);
             if (!response.ok) throw new Error('Falha ao sincronizar');
             const data = await response.json();
             
-            // Mantém as mensagens locais se já existirem para não perder o histórico da sessão
             const syncedChats = data.map(newChat => {
                 const existing = chats.value.find(c => c.id === newChat.id);
                 return {
@@ -115,14 +111,13 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const fetchMessages = async (clientId, chatId) => {
         try {
-            const response = await fetch(`http://206.183.129.197:3000/api/instances/${clientId}/chats/${chatId}/messages`);
+            const response = await apiFetch(`/api/instances/${clientId}/chats/${chatId}/messages`);
             if (!response.ok) throw new Error('Falha ao buscar mensagens');
             const data = await response.json();
             
             const chatIndex = chats.value.findIndex(c => c.id === chatId);
             if (chatIndex >= 0) {
                 chats.value[chatIndex].messages = data;
-                // Se for o chat ativo, atualiza ele também
                 if (activeChat.value && activeChat.value.id === chatId) {
                     activeChat.value = { ...chats.value[chatIndex] };
                 }

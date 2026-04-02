@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
+import { apiFetch } from '@/services/api';
 import Button from 'primevue/button';
 import Textarea from 'primevue/textarea';
 import { 
@@ -28,8 +29,8 @@ const fetchDataData = async () => {
     try {
         loading.value = true;
         const [resDepts, resSettings] = await Promise.all([
-            fetch('http://206.183.129.197:3000/api/departments'),
-            fetch('http://206.183.129.197:3000/api/settings')
+            apiFetch('/api/departments'),
+            apiFetch('/api/settings')
         ]);
         departaments.value = await resDepts.json();
         const settings = await resSettings.json();
@@ -60,10 +61,10 @@ const saveDept = async () => {
         loading.value = true;
         const method = isEditing.value ? 'PATCH' : 'POST';
         const url = isEditing.value 
-            ? `http://206.183.129.197:3000/api/departments/${editingId.value}` 
-            : 'http://206.183.129.197:3000/api/departments';
+            ? `/api/departments/${editingId.value}` 
+            : '/api/departments';
 
-        await fetch(url, {
+        await apiFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(deptForm.value)
@@ -81,7 +82,7 @@ const deleteDept = async (id) => {
     if (!confirm('Deseja excluir este departamento?')) return;
     try {
         loading.value = true;
-        await fetch(`http://206.183.129.197:3000/api/departments/${id}`, { method: 'DELETE' });
+        await apiFetch(`/api/departments/${id}`, { method: 'DELETE' });
         fetchDataData();
     } catch (e) {
         console.error(e);
@@ -93,7 +94,7 @@ const deleteDept = async (id) => {
 const saveAutomation = async () => {
     try {
         loading.value = true;
-        await fetch('http://206.183.129.197:3000/api/settings', {
+        await apiFetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ welcomeMessage: welcomeMessage.value })

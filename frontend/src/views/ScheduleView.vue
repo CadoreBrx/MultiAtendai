@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
 import { useAuthStore } from '@/stores/auth';
+import { apiFetch } from '@/services/api';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
@@ -36,7 +37,7 @@ const newAgendamento = ref({
 const fetchAgendamentos = async () => {
     try {
         loading.value = true;
-        const response = await fetch('http://206.183.129.197:3000/api/agendamentos');
+        const response = await apiFetch('/api/agendamentos');
         agendamentos.value = await response.json();
     } catch (e) {
         console.error(e);
@@ -55,7 +56,7 @@ const createAgendamento = async () => {
 
     try {
         loading.value = true;
-        const res = await fetch('http://206.183.129.197:3000/api/agendamentos', {
+        const res = await apiFetch('/api/agendamentos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -79,7 +80,7 @@ const createAgendamento = async () => {
 
 const updateStatus = async (id, status) => {
     try {
-        await fetch(`http://206.183.129.197:3000/api/agendamentos/${id}`, {
+        await apiFetch(`/api/agendamentos/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status })
@@ -93,7 +94,7 @@ const updateStatus = async (id, status) => {
 const deleteAgendamento = async (id) => {
     if (!confirm('Excluir este agendamento?')) return;
     try {
-        await fetch(`http://206.183.129.197:3000/api/agendamentos/${id}`, { method: 'DELETE' });
+        await apiFetch(`/api/agendamentos/${id}`, { method: 'DELETE' });
         fetchAgendamentos();
     } catch (e) {
         console.error(e);

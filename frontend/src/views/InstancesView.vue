@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
 import { useWhatsappStore } from '@/stores/whatsapp';
+import { apiFetch } from '@/services/api';
 import QrcodeVue from 'qrcode.vue';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
@@ -30,7 +31,7 @@ const activeInstance = ref(null);
 
 const fetchInstances = async () => {
     try {
-        const response = await fetch('http://206.183.129.197:3000/api/instances');
+        const response = await apiFetch('/api/instances');
         const data = await response.json();
         instances.value = data;
     } catch (e) {
@@ -51,7 +52,7 @@ const addInstance = async () => {
     
     try {
         loading.value = true;
-        await fetch('http://206.183.129.197:3000/api/instances', {
+        await apiFetch('/api/instances', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id, name: instanceForm.value.name })
@@ -70,7 +71,7 @@ const deleteInstance = async (id) => {
     
     try {
         loading.value = true;
-        await fetch(`http://206.183.129.197:3000/api/instances/${id}`, {
+        await apiFetch(`/api/instances/${id}`, {
             method: 'DELETE'
         });
         await fetchInstances();
@@ -92,7 +93,7 @@ const saveRename = async () => {
 
     try {
         loading.value = true;
-        await fetch('http://206.183.129.197:3000/api/instances', {
+        await apiFetch('/api/instances', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: activeInstance.value.id, name: instanceForm.value.name })

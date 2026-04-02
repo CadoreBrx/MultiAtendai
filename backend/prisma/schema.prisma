@@ -7,16 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── SaaS: Empresa (Tenant) ──────────────────
+model Empresa {
+  id        String   @id @default(uuid())
+  nome      String
+  slug      String   @unique  // identificador único URL-friendly
+  email     String   @unique  // email do dono/admin
+  senha     String            // hash bcrypt
+  plano     String   @default("free") // free, pro, enterprise
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios      Usuario[]
+  departamentos Departamento[]
+  contatos      Contato[]
+  agendamentos  Agendamento[]
+  mensagens     Mensagem[]
+  configuracoes Configuracao[]
+  instances     Instance[]
+}
+
+// ── Instâncias WhatsApp por empresa ─────────
+model Instance {
+  id        String   @id @default(uuid())
+  clientId  String   @unique  // ID usado no whatsapp-web.js
+  name      String
+  number    String?
+  status    String   @default("disconnected")
+
+  empresaId String
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Usuario {
   id        String   @id @default(uuid())
   nome      String
   email     String   @unique
   senha     String
+  role      String   @default("agent") // admin, agent
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  empresaId String
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   
-  mensagens Mensagem[] 
-  agendamentos Agendamento[]
+  mensagens     Mensagem[] 
+  agendamentos  Agendamento[]
   departamentos Departamento[] @relation("AgentesDoSetor")
   contatos      Contato[] @relation("AtendentesDoContato")
 }
@@ -24,9 +64,13 @@ model Usuario {
 model Departamento {
   id          String   @id @default(uuid())
   nome        String
-  ordem       Int      @default(0) // Para a ordem no menu do bot (1, 2, 3...)
+  ordem       Int      @default(0)
   cor         String?  @default("#6366f1")
   descricao   String?
+
+  empresaId   String
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
   agents      Usuario[] @relation("AgentesDoSetor")
   contatos    Contato[]
   
@@ -36,22 +80,30 @@ model Departamento {
 
 model Configuracao {
   id              String   @id @default(uuid())
-  chave           String   @unique // ex: 'welcomeMessage'
+  chave           String
   valor           String   @default("")
+
+  empresaId       String
+  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   
   updatedAt       DateTime @updatedAt
+
+  @@unique([empresaId, chave])
 }
 
 model Contato {
   id          String   @id @default(uuid())
   nome        String?
-  numero      String   @unique 
+  numero      String
   fotoPerfil  String?
-  status      String   @default("lead") // lead, qualificado, negociacao, fechado, perdido
-  chatStatus  String   @default("pending") // pending (fila), active (atendendo), closed (encerrado)
+  status      String   @default("lead")
+  chatStatus  String   @default("pending")
   valor       Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  empresaId   String
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   mensagens    Mensagem[] 
   agendamentos Agendamento[]
@@ -61,6 +113,8 @@ model Contato {
 
   atendenteId    String?
   atendente      Usuario? @relation(fields: [atendenteId], references: [id], name: "AtendentesDoContato")
+
+  @@unique([empresaId, numero])
 }
 
 model Agendamento {
@@ -68,13 +122,16 @@ model Agendamento {
   titulo    String
   descricao String?
   dataHora  DateTime
-  status    String   @default("pendente") // pendente, concluido, cancelado
+  status    String   @default("pendente")
 
   contatoId String?
   contato   Contato? @relation(fields: [contatoId], references: [id])
 
   usuarioId String
   usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+
+  empresaId String
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -93,6 +150,9 @@ model Mensagem {
 
   usuarioId   String?  
   usuario     Usuario? @relation(fields: [usuarioId], references: [id])
+
+  empresaId   String
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   createdAt   DateTime @default(now())
 }

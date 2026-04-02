@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { apiFetch } from '@/services/api';
 import Sidebar from '@/components/Sidebar.vue';
 import { 
   PhTrendUp, 
@@ -22,7 +23,7 @@ const loading = ref(false);
 const fetchStats = async () => {
     try {
         loading.value = true;
-        const response = await fetch('http://206.183.129.197:3000/api/dashboard/stats');
+        const response = await apiFetch('/api/dashboard/stats');
         stats.value = await response.json();
     } catch (e) {
         console.error(e);

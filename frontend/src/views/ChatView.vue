@@ -5,6 +5,7 @@ import { useWhatsappStore } from '@/stores/whatsapp';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Sidebar from '@/components/Sidebar.vue';
+import { apiFetch } from '@/services/api';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
@@ -221,7 +222,7 @@ const handleSendMessage = async () => {
     }
 
     try {
-        await fetch('http://206.183.129.197:3000/api/send-message', {
+        await apiFetch('/api/send-message', {
             method: 'POST',
             body: formData,
         });
@@ -237,8 +238,8 @@ const openTransferDialog = async () => {
     showChatMenu.value = false;
     // Carrega usuários e departamentos para o select
     const [u, d] = await Promise.all([
-        fetch('http://206.183.129.197:3000/api/users').then(r => r.json()),
-        fetch('http://206.183.129.197:3000/api/departments').then(r => r.json())
+        apiFetch('/api/users').then(r => r.json()),
+        apiFetch('/api/departments').then(r => r.json())
     ]);
     users.value = u;
     departments.value = d;
@@ -252,7 +253,7 @@ const openTransferDialog = async () => {
 const transferChat = async () => {
     if (!wpStore.activeChat) return;
     try {
-        const res = await fetch(`http://206.183.129.197:3000/api/contacts/${encodeURIComponent(wpStore.activeChat.id)}/assign`, {
+        const res = await apiFetch(`/api/contacts/${encodeURIComponent(wpStore.activeChat.id)}/assign`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(transferForm.value)
@@ -310,7 +311,7 @@ const filteredChats = () => {
 
 const updateChatStatus = async (chatId, status) => {
     try {
-        const res = await fetch(`http://206.183.129.197:3000/api/contacts/${encodeURIComponent(chatId)}/chat-status`, {
+        const res = await apiFetch(`/api/contacts/${encodeURIComponent(chatId)}/chat-status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chatStatus: status })

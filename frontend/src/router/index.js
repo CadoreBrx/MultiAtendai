@@ -10,6 +10,11 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+    },
+    {
       path: '/',
       name: 'home',
       component: () => import('@/views/DashboardView.vue'),
@@ -58,7 +63,7 @@ router.beforeEach((to) => {
   const auth = useAuthStore();
   if (to.meta.requiresAuth && !auth.user) {
     return '/login';
-  } else if (to.name === 'login' && auth.user) {
+  } else if ((to.name === 'login' || to.name === 'register') && auth.user) {
     return '/';
   }
 });

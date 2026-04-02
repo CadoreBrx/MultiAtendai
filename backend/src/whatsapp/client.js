@@ -1,15 +1,18 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const fs = require('fs');
-const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const settingsFile = path.join(__dirname, '../../data/settings.json');
-
 const clients = new Map();
+// Mapa clientId -> empresaId para saber de qual tenant é cada instância
+const clientTenantMap = new Map();
 
-function initializeWhatsAppClient(clientId, io) {
+function initializeWhatsAppClient(clientId, io, empresaId) {
     if (clients.has(clientId)) return clients.get(clientId);
+
+    // Salva o mapeamento tenant
+    if (empresaId) {
+        clientTenantMap.set(clientId, empresaId);
+    }
 
     const client = new Client({
         authStrategy: new LocalAuth({ clientId: clientId }),
@@ -26,12 +29,23 @@ function initializeWhatsAppClient(clientId, io) {
 
     client.on('qr', (qr) => {
         console.log(`[${clientId}] QR CODE GERADO`);
-        // Emite o QR Code para o Frontend exibir, incluindo o ID da instancia
         io.emit('whatsapp_qr', { clientId, qr });
     });
 
-    client.on('ready', () => {
+    client.on('ready', async () => {
         console.log(`[${clientId}] CLIENTE WHATSAPP PRONTO!`);
+        
+        // Atualiza número no banco
+        try {
+            const number = client.info?.wid?.user || '';
+            await prisma.instance.updateMany({
+                where: { clientId },
+                data: { number, status: 'connected' }
+            });
+        } catch (e) {
+            console.error(`[${clientId}] Erro ao atualizar status no banco:`, e);
+        }
+
         io.emit('whatsapp_ready', { clientId, message: 'Conectado e pronto para uso!' });
     });
 
@@ -48,17 +62,34 @@ function initializeWhatsAppClient(clientId, io) {
     const handleMessage = async (msg) => {
         if (msg.from === 'status@broadcast') return;
         
-        // 1. Lógica do Chatbot Dinâmica
+        // Resolve o empresaId deste client
+        const tenantId = clientTenantMap.get(clientId);
+        if (!tenantId) {
+            // Tenta buscar do banco
+            const inst = await prisma.instance.findFirst({ where: { clientId } });
+            if (inst) {
+                clientTenantMap.set(clientId, inst.empresaId);
+            } else {
+                console.error(`[${clientId}] Sem tenant associado, ignorando mensagem.`);
+                return;
+            }
+        }
+        const empresaId = clientTenantMap.get(clientId);
+
+        // 1. Lógica do Chatbot Dinâmica (scoped por empresa)
         if (!msg.fromMe && !msg.from.includes('@g.us')) {
             const body = msg.body.trim();
             const lowerBody = body.toLowerCase();
             
-            // Busca configurações e departamentos no banco
-            const configs = await prisma.configuracao.findMany();
+            const configs = await prisma.configuracao.findMany({
+                where: { empresaId }
+            });
             const welcomeMsg = configs.find(c => c.chave === 'welcomeMessage')?.valor || 'Olá! Bem-vindo à nossa central de atendimento. 🚀';
-            const departments = await prisma.departamento.findMany({ orderBy: { ordem: 'asc' } });
+            const departments = await prisma.departamento.findMany({ 
+                where: { empresaId },
+                orderBy: { ordem: 'asc' } 
+            });
 
-            // Trigger do Menu
             const triggers = ['oi', 'olá', 'boa tarde', 'bom dia', 'boa noite', 'menu', 'bot'];
             if (triggers.includes(lowerBody)) {
                 let menu = `${welcomeMsg}\n\nDigite o número do setor:\n`;
@@ -69,16 +100,14 @@ function initializeWhatsAppClient(clientId, io) {
                 return;
             } 
 
-            // Validação de Escolha de Setor
             const selectedDept = departments.find(d => String(d.ordem) === body);
             if (selectedDept) {
                 await client.sendMessage(msg.from, `Você escolheu *${selectedDept.nome}*.\n${selectedDept.descricao || 'Um atendente falará com você em breve!'}`);
-                // Opcional: Aqui você pode atribuir o contato a um setor no banco se quiser
                 return;
             }
         }
 
-        // 2. Captura de Dados do Contato e Grupo (Nome e Foto)
+        // 2. Captura dados do contato
         let profilePicUrl = null;
         let contactName = null;
         let chatName = null;
@@ -94,19 +123,17 @@ function initializeWhatsAppClient(clientId, io) {
             
             if (isGroup) {
                 chatName = chat.name || msg.from.split('@')[0];
-                // Em grupos, a foto principal que queremos no front é a do grupo
                 const chatContact = await chat.getContact();
                 const groupPic = await chatContact.getProfilePicUrl();
                 if (groupPic) profilePicUrl = groupPic;
             } else {
-                // Lógica sugerida pelo usuário: pushname é o nome real que a pessoa configurou
                 chatName = contact.pushname || contact.name || chat.name || msg.from.split('@')[0];
             }
         } catch (e) {
             chatName = msg.from.split('@')[0];
         }
 
-        // 3. Captura e Download de Mídia Recebida
+        // 3. Captura mídia
         let mediaData = null;
         if (msg.hasMedia) {
             try {
@@ -114,7 +141,7 @@ function initializeWhatsAppClient(clientId, io) {
                 if (media) {
                     mediaData = {
                         mimetype: media.mimetype,
-                        data: media.data, // base64
+                        data: media.data,
                         filename: media.filename
                     };
                 }
@@ -125,30 +152,32 @@ function initializeWhatsAppClient(clientId, io) {
         
         console.log(`[${clientId}] MENSAGEM de ${chatName}:`, msg.body);
         
-        // 4. Persistência no Banco de Dados
+        // 4. Persistência no Banco — scoped por empresa
         try {
             const numero = msg.from;
             const contato = await prisma.contato.upsert({
-                where: { numero },
+                where: { empresaId_numero: { empresaId, numero } },
                 update: { nome: chatName, fotoPerfil: profilePicUrl },
                 create: { 
                     numero, 
                     nome: chatName, 
                     fotoPerfil: profilePicUrl,
-                    status: 'lead'
+                    status: 'lead',
+                    empresaId
                 }
             });
 
             await prisma.mensagem.upsert({
                 where: { whatsappId: msg.id.id },
-                update: {}, // Já existe, não faz nada
+                update: {},
                 create: {
                     whatsappId: msg.id.id,
                     corpo: msg.body,
                     fromMe: msg.fromMe,
                     hasMedia: msg.hasMedia,
                     timestamp: msg.timestamp,
-                    contatoId: contato.id
+                    contatoId: contato.id,
+                    empresaId
                 }
             });
         } catch (dbError) {
@@ -172,7 +201,7 @@ function initializeWhatsAppClient(clientId, io) {
         });
     };
 
-    client.on('message_create', handleMessage); // Captura TODAS as mensagens (recebidas e enviadas po você)
+    client.on('message_create', handleMessage);
 
     client.initialize();
     clients.set(clientId, client);
@@ -208,6 +237,7 @@ async function deleteClient(clientId) {
             console.error(`Erro ao destruir cliente ${clientId}`, e);
         }
         clients.delete(clientId);
+        clientTenantMap.delete(clientId);
     }
 }
 

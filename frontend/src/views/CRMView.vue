@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useWhatsappStore } from '@/stores/whatsapp';
 import Sidebar from '@/components/Sidebar.vue';
+import { apiFetch } from '@/services/api';
 import InputText from 'primevue/inputtext';
 import { 
   PhKanban, 
@@ -33,7 +34,7 @@ const stages = [
 const fetchContacts = async () => {
     try {
         loading.value = true;
-        const response = await fetch('http://206.183.129.197:3000/api/contacts');
+        const response = await apiFetch('/api/contacts');
         contacts.value = await response.json();
     } catch (e) {
         console.error(e);
@@ -44,7 +45,7 @@ const fetchContacts = async () => {
 
 const moveStage = async (contactId, newStatus) => {
     try {
-        await fetch(`http://206.183.129.197:3000/api/contacts/${contactId}`, {
+        await apiFetch(`/api/contacts/${contactId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
@@ -57,7 +58,7 @@ const moveStage = async (contactId, newStatus) => {
 
 const updateValue = async (contactId, valor) => {
     try {
-        await fetch(`http://206.183.129.197:3000/api/contacts/${contactId}`, {
+        await apiFetch(`/api/contacts/${contactId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ valor: parseFloat(valor) })
