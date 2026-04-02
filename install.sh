@@ -194,7 +194,7 @@ echo -e "${B}Resumo da instalação:${NC}"
 echo "  Modo:       $([ "$MODE" == "2" ] && echo 'VPS (Nginx) — SaaS Multi-Tenant' || echo 'Local — SaaS Multi-Tenant')"
 [ "$MODE" == "2" ] && echo "  Host:       $SERVER_HOST"
 echo "  Backend:    http://${SERVER_HOST}:${BACK_PORT}"
-echo "  Frontend:   $([ "$MODE" == "2" ] && echo "$FRONTEND_API_URL (via Nginx)" || echo "http://localhost:$FRONT_PORT")"
+echo "  Frontend:   $([ "$MODE" == "2" ] && echo "$FRONTEND_API_URL (via Nginx)" || echo "http://$SERVER_HOST:$FRONT_PORT")"
 echo "  Acesso:     Aberto para todos (SaaS — qualquer empresa pode se cadastrar)"
 echo ""
 read -rp "Confirmar e instalar? [S/n]: " CONFIRM
