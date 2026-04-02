@@ -36,13 +36,17 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
     }
 
     const puppeteerConfig = {
+        protocolTimeout: 120000,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-extensions',
             '--disable-gpu',
-            '--single-process'
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--js-flags=--max-old-space-size=512'
         ]
     };
     if (chromePath) puppeteerConfig.executablePath = chromePath;

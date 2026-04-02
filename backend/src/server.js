@@ -470,51 +470,39 @@ app.get('/api/instances/:id/chats', authMiddleware, async (req, res) => {
 
     try {
         const chats = await client.getChats();
-        const activeChats = chats.slice(0, 50);
-        
-        const formattedChats = [];
-        for (const c of activeChats) {
-            let profilePicUrl = null;
-            let contactName = c.name;
+        const activeChats = chats.slice(0, 30);
 
-            try {
-                const contact = await c.getContact();
-                try {
-                    profilePicUrl = await client.getProfilePicUrl(c.id._serialized);
-                } catch (picErr) {}
-
-                if (c.isGroup) {
-                    contactName = c.name || c.id.user;
-                } else {
-                    contactName = contact.pushname || contact.name || c.name || c.id.user;
-                }
-            } catch (e) {
-                contactName = c.name || c.id.user;
+        // Busca todos os contatos do tenant em uma query só (evita N queries)
+        const chatIds = activeChats.map(c => c.id._serialized);
+        const dbContacts = await prisma.contato.findMany({
+            where: { numero: { in: chatIds }, empresaId: req.empresaId },
+            include: {
+                atendente: { select: { id: true, nome: true } },
+                departamento: { select: { id: true, nome: true } }
             }
+        });
+        const dbContactMap = Object.fromEntries(dbContacts.map(c => [c.numero, c]));
 
-            const dbContact = await prisma.contato.findFirst({
-                where: { numero: c.id._serialized, empresaId: req.empresaId },
-                include: {
-                    atendente: { select: { id: true, nome: true } },
-                    departamento: { select: { id: true, nome: true } }
-                }
-            });
+        const formattedChats = activeChats.map(c => {
+            // Usa nome já disponível no objeto do chat sem chamar getContact() / getProfilePicUrl()
+            const contactName = c.name || c.id.user;
+            const dbContact = dbContactMap[c.id._serialized] || null;
 
-            formattedChats.push({
+            return {
                 id: c.id._serialized,
                 name: contactName,
-                lastMessage: c.lastMessage ? c.lastMessage.body : '',
+                lastMessage: c.lastMessage?.body || '',
                 timestamp: c.timestamp,
                 unreadCount: c.unreadCount,
                 isGroup: c.isGroup,
-                profilePicUrl,
+                profilePicUrl: null,
                 clientId: id,
                 instanceName: id,
                 chatStatus: dbContact ? dbContact.chatStatus : 'pending',
                 atendente: dbContact?.atendente || null,
                 departamento: dbContact?.departamento || null
-            });
-        }
+            };
+        });
 
         res.json(formattedChats);
     } catch (error) {
