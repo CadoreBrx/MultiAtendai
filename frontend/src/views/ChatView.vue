@@ -93,7 +93,7 @@ const startNewChat = () => {
         chatStatus: 'active',
         isGroup: false,
         profilePicUrl: null,
-        clientId: wpStore.chats[0]?.clientId || 'suporte_principal'
+        clientId: wpStore.chats.find(c => c.clientId && c.clientId !== 'suporte_principal')?.clientId || wpStore.chats[0]?.clientId || null
     };
     
     selectChat(newChat);
@@ -197,12 +197,23 @@ const handleFileChange = (e) => {
 const handleSendMessage = async () => {
     if ((!messageInput.value.trim() && !selectedFile.value) || !wpStore.activeChat) return;
 
+    // Resolve clientId válido (descarta 'suporte_principal' legado)
+    let resolvedClientId = wpStore.activeChat.clientId;
+    if (!resolvedClientId || resolvedClientId === 'suporte_principal') {
+        try {
+            const instRes = await apiFetch('/api/instances');
+            const instances = await instRes.json();
+            const connected = instances.find(i => i.status === 'connected');
+            if (connected) resolvedClientId = connected.id;
+        } catch (_) {}
+    }
+
     const formData = new FormData();
     formData.append('number', wpStore.activeChat.id.split('@')[0]);
     formData.append('message', messageInput.value);
-    
-    if (wpStore.activeChat.clientId) {
-        formData.append('clientId', wpStore.activeChat.clientId);
+
+    if (resolvedClientId) {
+        formData.append('clientId', resolvedClientId);
     }
     if (selectedFile.value) {
         formData.append('file', selectedFile.value);

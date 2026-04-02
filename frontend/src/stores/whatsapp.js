@@ -111,7 +111,20 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
     const fetchMessages = async (clientId, chatId) => {
         try {
-            const response = await apiFetch(`/api/instances/${clientId}/chats/${chatId}/messages`);
+            let targetId = clientId;
+            if (!targetId || targetId === 'suporte_principal') {
+                const instRes = await apiFetch('/api/instances');
+                const instances = await instRes.json();
+                const connected = instances.find(i => i.status === 'connected');
+                if (!connected) return;
+                targetId = connected.id;
+                // Corrige o clientId no chat para não repetir o problema
+                const chatIndex = chats.value.findIndex(c => c.id === chatId);
+                if (chatIndex >= 0) chats.value[chatIndex].clientId = targetId;
+                if (activeChat.value?.id === chatId) activeChat.value = { ...activeChat.value, clientId: targetId };
+            }
+
+            const response = await apiFetch(`/api/instances/${targetId}/chats/${chatId}/messages`);
             if (!response.ok) throw new Error('Falha ao buscar mensagens');
             const data = await response.json();
             
