@@ -5,6 +5,8 @@ const prisma = new PrismaClient();
 const clients = new Map();
 // Mapa clientId -> empresaId para saber de qual tenant é cada instância
 const clientTenantMap = new Map();
+// Último QR gerado por instância (para reenviar ao reconectar)
+const lastQrMap = new Map();
 
 function initializeWhatsAppClient(clientId, io, empresaId) {
     if (clients.has(clientId)) return clients.get(clientId);
@@ -29,12 +31,14 @@ function initializeWhatsAppClient(clientId, io, empresaId) {
 
     client.on('qr', (qr) => {
         console.log(`[${clientId}] QR CODE GERADO`);
+        lastQrMap.set(clientId, qr);
         io.emit('whatsapp_qr', { clientId, qr });
     });
 
     client.on('ready', async () => {
         console.log(`[${clientId}] CLIENTE WHATSAPP PRONTO!`);
-        
+        lastQrMap.delete(clientId);
+
         // Atualiza número no banco
         try {
             const number = client.info?.wid?.user || '';
@@ -238,7 +242,12 @@ async function deleteClient(clientId) {
         }
         clients.delete(clientId);
         clientTenantMap.delete(clientId);
+        lastQrMap.delete(clientId);
     }
 }
 
-module.exports = { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient };
+function getLastQr(clientId) {
+    return lastQrMap.get(clientId) || null;
+}
+
+module.exports = { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient, getLastQr };

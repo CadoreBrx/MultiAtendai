@@ -7,7 +7,7 @@ const multer = require('multer');
 const { MessageMedia } = require('whatsapp-web.js');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient } = require('./whatsapp/client');
+const { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient, getLastQr } = require('./whatsapp/client');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -45,10 +45,27 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
     console.log('Cliente socket conectado:', socket.id);
     
-    socket.on('whatsapp_initialize', (data) => {
+    socket.on('whatsapp_initialize', async (data) => {
         const { clientId } = data;
         console.log(`Solicitação de inicialização para: ${clientId}`);
-        // empresaId será resolvido pelo client.js 
+
+        const existing = getClient(clientId);
+        if (existing) {
+            // Se já está conectado, só confirma
+            if (existing.info) {
+                socket.emit('whatsapp_ready', { clientId, message: 'Já conectado.' });
+                return;
+            }
+            // Se tem QR pendente, reenvia para este socket
+            const qr = getLastQr(clientId);
+            if (qr) {
+                socket.emit('whatsapp_qr', { clientId, qr });
+                return;
+            }
+            // Desconectado e sem QR — destrói e reinicializa
+            await deleteClient(clientId);
+        }
+
         initializeWhatsAppClient(clientId, io);
     });
     socket.on('whatsapp_typing', async (data) => {
