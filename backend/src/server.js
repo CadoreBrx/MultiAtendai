@@ -570,7 +570,7 @@ app.get('/api/instances/:id/chats/:chatId/messages', authMiddleware, async (req,
 
 // --- Send Message ---
 app.post('/api/send-message', authMiddleware, upload.single('file'), async (req, res) => {
-    let { number, message, clientId, quotedMessageId, agentId, agentName, agentDept } = req.body;
+    let { number, chatId: rawChatId, message, clientId, quotedMessageId, agentId, agentName, agentDept } = req.body;
     const file = req.file;
 
     try {
@@ -601,20 +601,22 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
 
         if (!client) return res.status(404).json({ error: 'Nenhum cliente WhatsApp conectado encontrado.' });
         
-        const rawNumber = number.replace(/\D/g, '');
-        let chatId = number.includes('@') ? number : `${rawNumber}@c.us`;
+        const rawNumber = number ? number.replace(/\D/g, '') : '';
+        // Prioriza o chatId completo enviado pelo frontend (pode ser @lid, @g.us, @c.us)
+        let chatId = rawChatId || (number && number.includes('@') ? number : `${rawNumber}@c.us`);
         const options = quotedMessageId ? { quotedMessageId } : {};
 
-        // Resolve LID: busca o chat na lista pelo número para obter o ID real (LID ou JID)
-        try {
-            const allChats = await client.getChats();
-            const found = allChats.find(c =>
-                c.id.user === rawNumber ||
-                c.id._serialized === chatId ||
-                c.id._serialized === `${rawNumber}@c.us`
-            );
-            if (found) chatId = found.id._serialized;
-        } catch (_) { /* fallback para o chatId original */ }
+        // Se não veio chatId completo do frontend, tenta resolver via lista de chats
+        if (!rawChatId && rawNumber) {
+            try {
+                const allChats = await client.getChats();
+                const found = allChats.find(c =>
+                    c.id.user === rawNumber ||
+                    c.id._serialized === `${rawNumber}@c.us`
+                );
+                if (found) chatId = found.id._serialized;
+            } catch (_) { /* mantém o chatId original */ }
+        }
 
         let prefix = '';
         if (agentName) {

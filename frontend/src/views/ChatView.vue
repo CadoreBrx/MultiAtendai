@@ -210,6 +210,7 @@ const handleSendMessage = async () => {
 
     const formData = new FormData();
     formData.append('number', wpStore.activeChat.id.split('@')[0]);
+    formData.append('chatId', wpStore.activeChat.id); // ID completo com domínio (@c.us, @lid, @g.us)
     formData.append('message', messageInput.value);
 
     if (resolvedClientId) {
