@@ -601,13 +601,19 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
 
         if (!client) return res.status(404).json({ error: 'Nenhum cliente WhatsApp conectado encontrado.' });
         
-        let chatId = number.includes('@') ? number : `${number}@c.us`;
+        const rawNumber = number.replace(/\D/g, '');
+        let chatId = number.includes('@') ? number : `${rawNumber}@c.us`;
         const options = quotedMessageId ? { quotedMessageId } : {};
 
-        // Resolve LID: sessões novas do WhatsApp exigem o ID via getContactById
+        // Resolve LID: busca o chat na lista pelo número para obter o ID real (LID ou JID)
         try {
-            const contact = await client.getContactById(chatId);
-            if (contact?.id?._serialized) chatId = contact.id._serialized;
+            const allChats = await client.getChats();
+            const found = allChats.find(c =>
+                c.id.user === rawNumber ||
+                c.id._serialized === chatId ||
+                c.id._serialized === `${rawNumber}@c.us`
+            );
+            if (found) chatId = found.id._serialized;
         } catch (_) { /* fallback para o chatId original */ }
 
         let prefix = '';

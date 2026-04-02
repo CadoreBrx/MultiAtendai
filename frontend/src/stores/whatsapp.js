@@ -43,6 +43,7 @@ export const useWhatsappStore = defineStore('whatsapp', () => {
 
         if (existingChatIndex >= 0) {
             const chat = { ...newChats[existingChatIndex] };
+            chat.messages = chat.messages || [];
             if (!chat.messages.some(m => m.id === msg.id)) {
                 chat.messages = [...chat.messages, msg];
                 chat.lastMessage = msg.body || (msg.hasMedia ? '📷 Mídia' : '');
