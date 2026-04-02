@@ -4,10 +4,9 @@ const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const multer = require('multer');
-const { MessageMedia } = require('whatsapp-web.js');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient, getLastQr } = require('./whatsapp/client');
+const { initializeWhatsAppClient, getClient, getAllClientsStatus, deleteClient, getLastQr, getStore } = require('./whatsapp/client');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -70,14 +69,13 @@ io.on('connection', (socket) => {
     });
     socket.on('whatsapp_typing', async (data) => {
         const { clientId, chatId, isTyping } = data;
-        const client = getClient(clientId);
-        if (client) {
+        const sock = getClient(clientId);
+        if (sock) {
             try {
-                const chat = await client.getChatById(chatId);
                 if (isTyping) {
-                    await chat.sendStateTyping();
+                    await sock.sendPresenceUpdate('composing', chatId);
                 } else {
-                    await chat.clearState();
+                    await sock.sendPresenceUpdate('paused', chatId);
                 }
             } catch (e) {
                 // Silencioso
@@ -457,50 +455,50 @@ app.delete('/api/departments/:id', authMiddleware, async (req, res) => {
 app.get('/api/instances/:id/chats', authMiddleware, async (req, res) => {
     const { id } = req.params;
     
-    // Verifica se a instância pertence à empresa
     const instance = await prisma.instance.findFirst({
         where: { clientId: id, empresaId: req.empresaId }
     });
     if (!instance) return res.status(404).json({ error: 'Instância não encontrada' });
 
-    const client = getClient(id);
-    if (!client) {
-        return res.status(404).json({ error: 'Instância não conectada' });
-    }
+    const sock = getClient(id);
+    if (!sock) return res.status(404).json({ error: 'Instância não conectada' });
 
     try {
-        const chats = await client.getChats();
-        const activeChats = chats.slice(0, 30);
+        const store = getStore(id);
+        const memChats = store ? store.chats.all() : [];
+        const memChatsMap = Object.fromEntries(memChats.map(c => [c.id, c]));
 
-        // Busca todos os contatos do tenant em uma query só (evita N queries)
-        const chatIds = activeChats.map(c => c.id._serialized);
         const dbContacts = await prisma.contato.findMany({
-            where: { numero: { in: chatIds }, empresaId: req.empresaId },
+            where: { empresaId: req.empresaId },
             include: {
                 atendente: { select: { id: true, nome: true } },
-                departamento: { select: { id: true, nome: true } }
-            }
+                departamento: { select: { id: true, nome: true } },
+                mensagens: {
+                    orderBy: { timestamp: 'desc' },
+                    take: 1
+                }
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 30
         });
-        const dbContactMap = Object.fromEntries(dbContacts.map(c => [c.numero, c]));
 
-        const formattedChats = activeChats.map(c => {
-            // Usa nome já disponível no objeto do chat sem chamar getContact() / getProfilePicUrl()
-            const contactName = c.name || c.id.user;
-            const dbContact = dbContactMap[c.id._serialized] || null;
+        const formattedChats = dbContacts.map(dbContact => {
+            const memChat = memChatsMap[dbContact.numero] || {};
+            const lastMessageObj = dbContact.mensagens[0];
 
             return {
-                id: c.id._serialized,
-                name: contactName,
-                lastMessage: c.lastMessage?.body || '',
-                timestamp: c.timestamp,
-                unreadCount: c.unreadCount,
-                isGroup: c.isGroup,
-                profilePicUrl: null,
+                id: dbContact.numero,
+                name: dbContact.nome || dbContact.numero.split('@')[0],
+                lastMessage: lastMessageObj ? lastMessageObj.corpo : '',
+                timestamp: lastMessageObj ? lastMessageObj.timestamp : Math.floor(Date.now() / 1000),
+                unreadCount: memChat.unreadCount || 0,
+                isGroup: dbContact.numero.endsWith('@g.us'),
+                profilePicUrl: dbContact.fotoPerfil || null,
                 clientId: id,
                 instanceName: id,
-                chatStatus: dbContact ? dbContact.chatStatus : 'pending',
-                atendente: dbContact?.atendente || null,
-                departamento: dbContact?.departamento || null
+                chatStatus: dbContact.chatStatus || 'pending',
+                atendente: dbContact.atendente || null,
+                departamento: dbContact.departamento || null
             };
         });
 
@@ -519,47 +517,36 @@ app.get('/api/instances/:id/chats/:chatId/messages', authMiddleware, async (req,
     });
     if (!instance) return res.status(404).json({ error: 'Instância não encontrada' });
 
-    const client = getClient(id);
-    if (!client) {
-        return res.status(404).json({ error: 'Instância não conectada' });
-    }
+    const sock = getClient(id);
+    if (!sock) return res.status(404).json({ error: 'Instância não conectada' });
 
     try {
-        const chat = await client.getChatById(chatId);
-        const messages = await chat.fetchMessages({ limit: 40 });
-        
-        const formattedMessages = await Promise.all(messages.map(async msg => {
-            let mediaData = null;
-            if (msg.hasMedia) {
-                try {
-                    const media = await msg.downloadMedia();
-                    if (media) {
-                        mediaData = {
-                            mimetype: media.mimetype,
-                            data: media.data,
-                            filename: media.filename
-                        };
-                    }
-                } catch (e) {
-                    console.error("Erro ao baixar mídia:", e);
-                }
-            }
+        const contato = await prisma.contato.findFirst({
+            where: { numero: chatId, empresaId: req.empresaId }
+        });
 
-            return {
-                id: msg.id._serialized,
-                whatsappId: msg.id._serialized,
-                body: msg.body,
-                corpo: msg.body,
-                from: msg.from,
-                to: msg.to,
+        let formattedMessages = [];
+        if (contato) {
+            const dbMsgs = await prisma.mensagem.findMany({
+                where: { contatoId: contato.id },
+                orderBy: { timestamp: 'asc' },
+                take: 100
+            });
+            formattedMessages = dbMsgs.map(msg => ({
+                id: msg.whatsappId,
+                whatsappId: msg.whatsappId,
+                body: msg.corpo,
+                corpo: msg.corpo,
+                from: msg.fromMe ? null : chatId,
+                to: msg.fromMe ? chatId : null,
                 fromMe: msg.fromMe,
                 timestamp: msg.timestamp,
                 hasMedia: msg.hasMedia,
-                mediaData,
-                type: msg.type,
-                ack: msg.ack
-            };
-        }));
+                mediaData: null,
+                type: 'chat',
+                ack: 2
+            }));
+        }
 
         res.json(formattedMessages);
     } catch (error) {
@@ -574,7 +561,6 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
     const file = req.file;
 
     try {
-        // Verifica se a instância pertence à empresa
         if (clientId) {
             const instance = await prisma.instance.findFirst({
                 where: { clientId, empresaId: req.empresaId }
@@ -582,10 +568,9 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
             if (!instance) clientId = null;
         }
 
-        let client = clientId ? getClient(clientId) : null;
+        let sock = clientId ? getClient(clientId) : null;
         
-        if (!client) {
-            // Busca uma instância conectada desta empresa
+        if (!sock) {
             const empresaInstances = await prisma.instance.findMany({
                 where: { empresaId: req.empresaId }
             });
@@ -594,23 +579,25 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
                 empresaInstances.some(ei => ei.clientId === c.id)
             );
             if (validClient) {
-                client = getClient(validClient.id);
+                sock = getClient(validClient.id);
                 clientId = validClient.id;
             }
         }
 
-        if (!client) return res.status(404).json({ error: 'Nenhum cliente WhatsApp conectado encontrado.' });
+        if (!sock) return res.status(404).json({ error: 'Nenhum servidor conectado' });
         
         const rawNumber = number ? number.replace(/\D/g, '') : '';
         let chatId = rawChatId && rawChatId.includes('@') ? rawChatId : null;
         const options = quotedMessageId ? { quotedMessageId } : {};
 
         if (!chatId && rawNumber) {
-            const numberId = await client.getNumberId(rawNumber);
-            if (!numberId) {
+            // Em Baileys, onWhatsApp recebe id em s.whatsapp.net
+            const jidSearch = `${rawNumber}@s.whatsapp.net`;
+            const [result] = await sock.onWhatsApp(jidSearch) || [];
+            if (!result || !result.exists) {
                 return res.status(400).json({ success: false, error: 'Número não possui WhatsApp' });
             }
-            chatId = numberId._serialized;
+            chatId = result.jid;
         }
 
         if (!chatId) return res.status(400).json({ success: false, error: 'chatId inválido' });
@@ -621,48 +608,44 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
         }
         const finalMessage = prefix + (message || '');
 
-        // Força a resolução do LID para contatos Multi-Device (MD) antes de enviar.
-        // Sem isso, sendMessage falha com "No LID for user" em contas MD.
-        if (!chatId.includes('@g.us')) {
-            await client.pupPage.evaluate(async (cId) => {
-                try { await window.WWebJS.enforceLidAndPnRetrieval(cId); } catch (_) {}
-            }, chatId).catch(() => {});
-        }
-
         let sentMsg;
+
         if (file) {
-            const media = new MessageMedia(
-                file.mimetype,
-                file.buffer.toString('base64'),
-                file.originalname || file.name || 'file'
-            );
-
-            const isAudio = file.mimetype.includes('audio');
-            const mediaOptions = { ...options, caption: finalMessage };
-            if (isAudio) {
-                mediaOptions.sendAudioAsVoice = true;
+            const mimetype = file.mimetype;
+            const isAudio = mimetype.includes('audio');
+            const isImage = mimetype.includes('image');
+            const isVideo = mimetype.includes('video');
+            
+            let messageContent = {};
+            if (isImage) {
+                messageContent = { image: file.buffer, caption: finalMessage };
+            } else if (isVideo) {
+                messageContent = { video: file.buffer, caption: finalMessage };
+            } else if (isAudio) {
+               messageContent = { audio: file.buffer, ptt: true, mimetype: 'audio/mp4' };
+            } else {
+               messageContent = { document: file.buffer, mimetype, fileName: file.originalname, caption: finalMessage };
             }
-
-            sentMsg = await client.sendMessage(chatId, media, mediaOptions);
+            
+            sentMsg = await sock.sendMessage(chatId, messageContent);
         } else {
-            sentMsg = await client.sendMessage(chatId, finalMessage, options);
+            sentMsg = await sock.sendMessage(chatId, { text: finalMessage });
         }
 
-        // Persiste a mensagem no banco do tenant
         try {
             const contato = await prisma.contato.findFirst({ 
                 where: { numero: chatId, empresaId: req.empresaId } 
             });
             if (contato && sentMsg) {
                 await prisma.mensagem.upsert({
-                    where: { whatsappId: sentMsg.id._serialized },
+                    where: { whatsappId: sentMsg.key.id },
                     update: {},
                     create: {
-                        whatsappId: sentMsg.id._serialized,
+                        whatsappId: sentMsg.key.id,
                         corpo: finalMessage,
                         fromMe: true,
                         hasMedia: !!file,
-                        timestamp: sentMsg.timestamp,
+                        timestamp: sentMsg.messageTimestamp || Math.floor(Date.now()/1000),
                         contatoId: contato.id,
                         usuarioId: agentId || null,
                         empresaId: req.empresaId
@@ -673,7 +656,7 @@ app.post('/api/send-message', authMiddleware, upload.single('file'), async (req,
             console.error('Erro ao persistir mensagem:', dbErr);
         }
 
-        res.json({ success: true, message: 'Message sent' });
+        res.json({ success: true, message: 'Message sent', id: sentMsg?.key?.id });
     } catch (error) {
         console.error('Error sending message:', error);
         res.status(500).json({ success: false, error: 'Failed to send message' });

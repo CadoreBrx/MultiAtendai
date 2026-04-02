@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(bash -n /c/Users/Matheus/MultiAtendai/install.sh)",
+      "WebFetch(domain:docs.wwebjs.dev)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(gh auth:*)"
+    ]
+  }
+}

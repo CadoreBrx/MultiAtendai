@@ -1,0 +1,1 @@
+const fs = require('fs'); const issues = JSON.parse(fs.readFileSync('temp_issues.json', 'utf8')); console.log(issues.filter(i => i.title.toLowerCase().includes('lid')).map(i => i.number + ': ' + i.title).join('\n'));
